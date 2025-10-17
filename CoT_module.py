@@ -11,8 +11,8 @@ You can use the latest MLLM generation tool to simultaneously splice our CoT mod
 
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, [0]))
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, [0]))
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import logging
 import sys
@@ -38,6 +38,7 @@ import auto_gptq
 from auto_gptq.modeling import BaseGPTQForCausalLM
 
 auto_gptq.modeling._base.SUPPORTED_MODELS = ["InternLMXComposer"]
+
 
 class InternLMXComposerQForCausalLM(BaseGPTQForCausalLM):
     layers_block_name = "internlm_model.model.layers"
@@ -66,7 +67,9 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 torch.set_grad_enabled(False)
 
-parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+parser = HfArgumentParser(
+    (ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments)
+)
 model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
 logging.basicConfig(
@@ -108,18 +111,20 @@ if data_args.test_file is not None:
     extension = data_args.test_file.split(".")[-1]
 
 
-config = AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
+config = AutoConfig.from_pretrained(
+    model_args.model_name_or_path, trust_remote_code=True
+)
 config.pre_seq_len = model_args.pre_seq_len
 config.prefix_projection = model_args.prefix_projection
 
-device = 'cuda:0'
+device = "cuda:0"
 
 model = InternLMXComposerQForCausalLM.from_quantized(
-            model_args.model_name_or_path, trust_remote_code=True, device="cuda:0"
-        )
+    model_args.model_name_or_path, trust_remote_code=True, device="cuda:0"
+)
 tokenizer = AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path, trust_remote_code=True
-    )
+    model_args.model_name_or_path, trust_remote_code=True
+)
 model.model.tokenizer = tokenizer
 model.config.max_length = 100
 
@@ -127,7 +132,7 @@ max_target_length = data_args.max_target_length
 
 
 def save_json(file_name, data):
-    with open(file_name, 'w', encoding='utf-8') as f:
+    with open(file_name, "w", encoding="utf-8") as f:
         f.write(json.dumps(data))
 
 
@@ -138,56 +143,56 @@ def load_json(file_path):
 
 # =======================CoT module=======================
 
-process_file_list = ['train_data', 'val_data', 'test_data']
-origin_data_path = '''
+process_file_list = ["train_data", "val_data", "test_data"]
+origin_data_path = """
 The origin data path, the one you saved from https://github.com/liaolianfoka/MET-Meme-A-Multi-modal-Meme-Dataset-Rich-in-Metaphors
-'''
-new_data_path = '''
+"""
+new_data_path = """
 The data path you processed with MLLM.
-'''
-image_file_path = '''
+"""
+image_file_path = """
 Fill in the image save path here, which should have two folders containing Chinese and English images, respectively.
 For example:
 
 data/image -> the image file path, which contains two folders as follow.
     |_English
     |_Chinese
-'''
+"""
 
 for file in process_file_list:
     # Check first if there are any checkpoints present
-    if os.path.exists(f'{new_data_path}/{file}.json'):
-        datas = load_json(f'{new_data_path}/new_{file}.json')
+    if os.path.exists(f"{new_data_path}/{file}.json"):
+        datas = load_json(f"{new_data_path}/new_{file}.json")
     else:
-        datas = load_json(f'{origin_data_path}/new_{file}.json')
+        datas = load_json(f"{origin_data_path}/new_{file}.json")
     count = 0
     for line in tqdm(datas):
-        if 'internlm_mix_info' in line:
+        if "internlm_mix_info" in line:
             continue
-        img_name = line['file_name']
-        img = f'{image_file_path}/{img_name}'
-        Question1 = 'Please temporarily ignore the text in the image and describe the content in the image. Try to be concise while ensuring the correctness of your answers.'
-        inputs = {'text': Question1, 'image': img}
+        img_name = line["file_name"]
+        img = f"{image_file_path}/{img_name}"
+        Question1 = "Please temporarily ignore the text in the image and describe the content in the image. Try to be concise while ensuring the correctness of your answers."
+        inputs = {"text": Question1, "image": img}
         response1 = model.generate(**inputs)
-        line['internlm_img_info'] = response1
+        line["internlm_img_info"] = response1
 
         Question2 = f'The text in the picture is as follows: "{line["text"]}". Please analyze the meaning of the text. Note that there may be homophonic memes and puns, distinguish and explain them but do not over interpret while ensuring the correctness of the answer and be concise.'
-        inputs = {'text': Question2}
+        inputs = {"text": Question2}
         response2 = model.generate(**inputs)
-        line['internlm_text_info'] = response2
+        line["internlm_text_info"] = response2
 
         Question3 = f'Image description: {response1}; Text: "{line["text"]}"; Text description: {response2}. Please combine the image, text, and their description information and try to understand the deep meaning of the combination of the image and text. No need to describe images and text, only answer implicit meanings. Ensure the accuracy of the answer and try to be concise as much as possible.'
-        inputs = {'text': Question3, 'image': img}
+        inputs = {"text": Question3, "image": img}
         response3 = model.generate(**inputs)
-        line['internlm_mix_info'] = response3
+        line["internlm_mix_info"] = response3
 
         count += 1
         if count == 100:
             # This is a checkpoint to prevent unexpected stops during code execution and loss of previous results.
-            print('save_a_part')
+            print("save_a_part")
             count = 0
-            save_json(f'{new_data_path}/new_{file}.json', datas)
+            save_json(f"{new_data_path}/new_{file}.json", datas)
 
-    save_json(f'{new_data_path}/new_{file}.json', datas)
+    save_json(f"{new_data_path}/new_{file}.json", datas)
 
-print('finish!')
+print("finish!")
